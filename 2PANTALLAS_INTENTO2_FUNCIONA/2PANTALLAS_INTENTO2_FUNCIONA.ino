@@ -93,7 +93,7 @@ void loop() {
         u8g2.drawStr(10, 20, "T: ");
         u8g2.drawStr(40, 20, bufferTemperatura);
         u8g2.drawStr(10, 40, "Umbral:");
-        u8g2.drawStr(40, 40, bufferUmbral);
+        u8g2.drawStr(70, 40, bufferUmbral);
         u8g2.sendBuffer();
       }
 
@@ -144,7 +144,7 @@ case PANTALLA2:
     u8g2.clearBuffer();
     u8g2.setFont(u8g2_font_helvB10_tf);
     u8g2.drawStr(10, 20, "Umbral:");
-    u8g2.drawStr(40, 20, bufferUmbral);
+    u8g2.drawStr(70, 20, bufferUmbral);
     u8g2.sendBuffer();
   }
 
