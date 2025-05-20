@@ -1,206 +1,83 @@
-// GRUPO 3 - SAMA BAGDADI CHAMES DAGOTTO - EJERCICIO 2
-
-#include <DHT.h>
-#include <DHT_U.h>
-#include <Adafruit_Sensor.h>
-#include <U8g2lib.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h>
+#include <ArduinoJson.h>
+#include <I2C_eeprom.h>
+#include "Wire.h"
 
-#define PANTALLA1 1
-#define PASO1_CAMBIO_A_P2 2
-#define PASO2_CAMBIO_A_P2 3
-#define PASO3_CAMBIO_A_P2 4
-#define PANTALLA2 5
-#define ESTADO_CONFIRMACION2 6
-#define SUBIR_UMBRAL 7
-#define BAJAR_UMBRAL 8
+// Este bloque se deja como está
+I2C_eeprom ee(0x50, I2C_DEVICESIZE_24LC256);
 
-#define DHTPIN 23      // pin del dht11
-#define DHTTYPE DHT11  // tipo de dht (hay otros)
+// Credenciales de WiFi
+const char* ssid = "ORT-IoT";
+const char* password = "NuevaIOT$25";
 
-DHT dht(DHTPIN, DHTTYPE);
+// Inicializar el bot de Telegram
+#define BOTtoken "7737430934:AAF3215UFmRcJwk1K10o2GaRWij5BwGHjUM"  // Token del bot
+#define CHAT_ID "-4601150708"                                      // ID del chat donde se recibirán los mensajes
 
-//Botones
-#define PIN_BOTON1 34
-#define PIN_BOTON2 35
-#define PULSADO LOW
-#define N_PULSADO !PULSADO
+WiFiClientSecure client;
+UniversalTelegramBot bot(BOTtoken, client);
 
-const int CAMBIO_UMBRAL = 1;
+// Configuración del bot
+unsigned long lastTimeBotRan = 0;
+const int botRequestDelay = 1000;
 
-int umbralDeTemperatura = 0;
-bool cambioHecho = LOW;
-float temperatura = 0;
+// Función para manejar los mensajes nuevos
+void handleNewMessages(int numNewMessages) {
+  for (int i = 0; i < numNewMessages; i++) {
+    String chat_id = bot.messages[i].chat_id;
+    if (chat_id != CHAT_ID) {
+      bot.sendMessage(chat_id, "Usuario no autorizado", "");
+      continue;
+    }
 
-const char* SSID = "ORT-IoT";
-const char* PASSWORD = "NuevaIOT$25";
-const char* NTP_SERVER = "pool.ntp.org";
+    String text = bot.messages[i].text;
+    String from_name = bot.messages[i].from_name;
 
-int estadoActual = PANTALLA1;  // inicia en PANTALLA1
-
-const long INTERVALO = 1000;
-const long TIEMPO_MAX_ESPERA_BOTON = 5000;
-unsigned long tiempoAhora = millis();
-unsigned long tiempoUltimaImpresion = 0;
-unsigned long tiempoUltimoBotonPresionado = 0;
-
-U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/U8X8_PIN_NONE);  //inicializa la pantallita
-
-
-void setup() {
-  Serial.begin(115200);
-
-  pinMode(PIN_BOTON1, INPUT);
-  pinMode(PIN_BOTON2, INPUT);
-
-  dht.begin();   // inicializo el dht
-  u8g2.begin();  //inicializo la pantallita
-
-  WiFi.begin(SSID, PASSWORD);
-  Serial.println("Conectando a wifi");
-  tiempoUltimaImpresion = millis();
-  while (WiFi.status() != WL_CONNECTED) {
-    tiempoAhora = millis();
-    if (tiempoAhora - tiempoUltimaImpresion >= INTERVALO) {
-      tiempoUltimaImpresion = millis();
-      Serial.println("Intentando conectar...");
+    if (text == "/start") {
+      String welcome = "Bienvenido, " + from_name + ".\n";
+      welcome += "Usa los siguientes comandos para interactuar:\n";
+      welcome += "/add nombre cantidad - Agregar un nuevo alimento\n";
+      welcome += "/list - Listar todos los alimentos registrados\n";
+      welcome += "/remove nombre cantidad - Restar una cantidad o eliminar un alimento\n";
+      welcome += "/buscar nombre - Buscar la cantidad de un alimento específico\n";
+      bot.sendMessage(chat_id, welcome, "");
     }
   }
-  Serial.println("Conexión exitosa");
-
 }
 
+void setup() {
+  Serial.begin(9600);
+  Wire.begin();  // Inicialización I2C
+  ee.begin();    // Inicialización del manejador de la memoria
+
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Conectando a WiFi...");
+  }
+
+  Serial.println("Conectado a WiFi con IP:");
+  Serial.println(WiFi.localIP());
+
+#ifdef ESP32
+  client.setCACert(TELEGRAM_CERTIFICATE_ROOT);
+#endif
+}
 
 void loop() {
-  tiempoAhora = millis();
-  temperatura = dht.readTemperature();
 
-  bool lecturaBoton1 = digitalRead(PIN_BOTON1);
-  bool lecturaBoton2 = digitalRead(PIN_BOTON2);
-
-  switch (estadoActual) {
-    case PANTALLA1:
-      if (tiempoAhora - tiempoUltimaImpresion >= INTERVALO) {
-        tiempoUltimaImpresion = millis();
-
-        char bufferTemperatura[5];
-        char bufferUmbral[5];
-        sprintf(bufferTemperatura, "%.2f", temperatura);
-        sprintf(bufferUmbral, "%d", UmbralDeTemperatura);
-
-        u8g2.clearBuffer();
-        u8g2.setFont(u8g2_font_helvB10_tf);
-        u8g2.drawStr(10, 10, "Temperatura");
-        u8g2.drawStr(10, 25, bufferTemperatura);
-        u8g2.drawStr(10, 40, "Umbral");
-        u8g2.drawStr(10, 55, bufferUmbral);
-        u8g2.sendBuffer();
-      }
-
-      if (lecturaBoton1 == PULSADO) {
-        
-        tiempoUltimoBotonPresionado = millis();
-        estadoActual = PASO1_CAMBIO_A_P2;
-      }
-      break;
-
-
-    case PASO1_CAMBIO_A_P2:
-      if (lecturaBoton1 == N_PULSADO) {
-        if (lecturaBoton2 == PULSADO) {
-          estadoActual = PASO2_CAMBIO_A_P2;
-        }
-        if (tiempoAhora - tiempoUltimoBotonPresionado >= TIEMPO_MAX_ESPERA_BOTON){
-          estadoActual = PANTALLA1;
-        }
-      }
-      break;
-
-    case PASO2_CAMBIO_A_P2:
-      if (lecturaBoton2 == N_PULSADO) {
-        if (lecturaBoton1 == PULSADO) {
-          estadoActual = PASO3_CAMBIO_A_P2;
-        }
-        if (tiempoAhora - tiempoUltimoBotonPresionado >= TIEMPO_MAX_ESPERA_BOTON){
-          estadoActual = PANTALLA1;
-        }
-      }
-      break;
-
-    case PASO3_CAMBIO_A_P2:
-      if (lecturaBoton1 == N_PULSADO) {
-          estadoActual = PANTALLA2;
-        }
-      }
-      break;
-
-
-
-    case PANTALLA2:
-      if (tiempoAhora - tiempoUltimaImpresion >= INTERVALO)  ///delay sin bloqueo
-      {
-        tiempoUltimaImpresion = millis();  /// importante actualizar el tiempo
-        char bufferUmbral[5];
-
-        sprintf(bufferUmbral, "%d", UmbralDeTemperatura);
-
-        u8g2.clearBuffer();
-        u8g2.setFont(u8g2_font_helvB10_tf);
-        u8g2.drawStr(5, 5, "Umbral:");
-        u8g2.drawStr(5, 25, bufferUmbral);
-        u8g2.sendBuffer();
-      }
-
-      if (lecturaBoton1 == PULSADO && lecturaBoton2 == PULSADO) {
-        estadoActual = ESTADO_CONFIRMACION2;
-      }
-
-      if (lecturaBoton1 == PULSADO) {
-        cambioHecho = HIGH;
-        estadoActual = BAJAR_UMBRAL;
-        //Serial.println(cambioHecho);
-      }
-      if (lecturaBoton2 == PULSADO) {
-        cambioHecho = HIGH;
-        estadoActual = SUBIR_UMBRAL;
-        //Serial.println(cambioHecho);
-      }
-      break;
-
-
-    case ESTADO_CONFIRMACION2:
-      if (lecturaBoton1 == N_PULSADO && lecturaBoton2 == N_PULSADO) {
-        estadoActual = PANTALLA1;
-      }
-      break;
-
-
-    case SUBIR_UMBRAL:
-      if (lecturaBoton1 == PULSADO) {
-        estadoActual = ESTADO_CONFIRMACION2;
-      }
-
-      if (lecturaBoton2 == N_PULSADO) {
-        if (cambioHecho == HIGH) {
-          UmbralDeTemperatura = UmbralDeTemperatura + CAMBIO_UMBRAL;
-          cambioHecho = LOW;
-        }
-        estadoActual = PANTALLA2;
-      }
-      break;
-
-
-    case BAJAR_UMBRAL:
-      if (lecturaBoton2 == PULSADO) {
-        estadoActual = ESTADO_CONFIRMACION2;
-      }
-      if (lecturaBoton1 == N_PULSADO) {
-        if (cambioHecho == HIGH) {
-          UmbralDeTemperatura = UmbralDeTemperatura - CAMBIO_UMBRAL;
-          cambioHecho = LOW;
-        }
-        estadoActual = PANTALLA2;
-      }
-      break;
+  if (millis() > lastTimeBotRan + botRequestDelay) {
+    int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+    while (numNewMessages) {
+      handleNewMessages(numNewMessages);
+      numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+    }
+    lastTimeBotRan = millis();
   }
 }
