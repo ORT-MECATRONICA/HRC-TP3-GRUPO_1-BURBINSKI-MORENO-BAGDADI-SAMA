@@ -38,6 +38,9 @@ UniversalTelegramBot bot(BOTtoken, client);
 
 unsigned long lastTimeBotRan = 0;
 const int botRequestDelay = 1000;
+
+
+
 //***************************************************************************************
 
 TaskHandle_t LoopPantallas;
@@ -240,14 +243,31 @@ void LoopBotTelegramcode(void* pvParameters) {
   for (;;) {
     if (millis() - lastTimeBotRan > botRequestDelay) {
       int numMessages = bot.getUpdates(bot.last_message_received + 1);
-      if (numMessages) {
+
+      while (numMessages) {
+        numMessages = bot.getUpdates(bot.last_message_received + 1);
+
         handleMessages(numMessages);
       }
       lastTimeBotRan = millis();
+
+      //.....
     }
-    delay(100);
+    if (temperatura > umbralTemperatura && alertaEnviada == false) {
+      String warningTemp = "La temperatura actual superó el umbral (";
+      warningTemp += umbralTemperatura;
+      warningTemp += ")";
+      bot.sendMessage(CHAT_ID, warningTemp, "");
+      alertaEnviada = true;
+    }
+
+    if (temperatura <= umbralTemperatura) {
+      alertaEnviada = false;
+    }
   }
+  delay(100);
 }
+
 
 void handleMessages(int numMessages) {
   for (int i = 0; i < numMessages; i++) {
@@ -271,18 +291,6 @@ void handleMessages(int numMessages) {
       String sendTemp = "La temperatura actual es: ";
       sendTemp += temperatura;
       bot.sendMessage(chat_id, sendTemp, "");
-    }
-
-    if (temperatura > umbralTemperatura && !alertaEnviada) {
-      String warningTemp = "La temperatura actual superó el umbral (";
-      warningTemp += umbralTemperatura;
-      warningTemp += ")";
-      bot.sendMessage(chat_id, warningTemp, "");
-      alertaEnviada = true;
-    }
-
-    if (temperatura <= umbralTemperatura) {
-      alertaEnviada = false;
     }
   }
 }
